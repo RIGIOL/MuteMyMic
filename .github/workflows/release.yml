@@ -1,0 +1,38 @@
+# Push a tag like v1.0.0 and GitHub builds MuteMyMic.exe and attaches it to a Release,
+# together with its SHA-256 checksum so downloads can be verified.
+#
+# Supply-chain hardening: only first-party GitHub tooling is used (actions/checkout and the
+# gh CLI that ships on GitHub runners) — no third-party actions that could inject code into
+# the released exe — and the job token can do nothing beyond creating the release.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Build
+        shell: cmd
+        run: build.bat
+
+      - name: Checksum
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash bin/MuteMyMic.exe -Algorithm SHA256).Hash.ToLower()
+          "$hash  MuteMyMic.exe" | Set-Content bin/MuteMyMic.exe.sha256 -Encoding ascii
+
+      - name: Publish release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$env:GITHUB_REF_NAME" bin/MuteMyMic.exe bin/MuteMyMic.exe.sha256 --repo "$env:GITHUB_REPOSITORY" --title "Mute my Mic $env:GITHUB_REF_NAME" --generate-notes
